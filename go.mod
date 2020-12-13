@@ -3,6 +3,7 @@ module github.com/NJUPT-ISL/NodeSimulator
 go 1.13
 
 require (
+	//github.com/self-cream/SCV v0.0.0-20201213061001-6c337bbac7a5
 	github.com/NJUPT-ISL/SCV v0.0.0-20200908005541-d990930d5755
 	github.com/go-logr/logr v0.1.0
 	k8s.io/api v0.0.0-20190918155943-95b840bb6a1f
@@ -11,3 +12,5 @@ require (
 	k8s.io/klog v0.4.0
 	sigs.k8s.io/controller-runtime v0.4.0
 )
+
+replace github.com/NJUPT-ISL/SCV => github.com/self-cream/SCV v0.0.0-20201213061001-6c337bbac7a5 //indirect

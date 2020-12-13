@@ -1,7 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="50a0f2d5-1284-404a-b4fb-6a70df043d6a" name="Default Changelist" comment="" />
+    <list default="true" id="50a0f2d5-1284-404a-b4fb-6a70df043d6a" name="Default Changelist" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/go.mod" beforeDir="false" afterPath="$PROJECT_DIR$/go.mod" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/go.sum" beforeDir="false" afterPath="$PROJECT_DIR$/go.sum" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pkg/controllers/node/const.go" beforeDir="false" afterPath="$PROJECT_DIR$/pkg/controllers/node/const.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pkg/controllers/pod/pod_controller.go" beforeDir="false" afterPath="$PROJECT_DIR$/pkg/controllers/pod/pod_controller.go" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -14,7 +20,7 @@
       </list>
     </option>
   </component>
-  <component name="GOROOT" path="/usr/local/Cellar/go/1.13.6/libexec" />
+  <component name="GOROOT" path="/usr/local/go" />
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
@@ -27,12 +33,15 @@
     <property name="DefaultGoTemplateProperty" value="Go File" />
     <property name="RunOnceActivity.OpenProjectViewOnStart" value="true" />
     <property name="WebServerToolWindowFactoryState" value="false" />
+    <property name="configurable.Global.GOPATH.is.expanded" value="true" />
+    <property name="configurable.Module.GOPATH.is.expanded" value="false" />
+    <property name="configurable.Project.GOPATH.is.expanded" value="true" />
     <property name="go.import.settings.migrated" value="true" />
     <property name="go.sdk.automatically.set" value="true" />
-    <property name="last_opened_file_path" value="$PROJECT_DIR$/config/samples" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$" />
     <property name="nodejs_interpreter_path.stuck_in_default_project" value="undefined stuck path" />
     <property name="nodejs_npm_path_reset_for_default_project" value="true" />
-    <property name="settings.editor.selected.configurable" value="go.vgo" />
+    <property name="settings.editor.selected.configurable" value="editor.preferences.fonts.default" />
   </component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
@@ -57,11 +66,14 @@
     </environment>
   </component>
   <component name="WindowStateProjectService">
-    <state x="826" y="513" key="SettingsEditor" timestamp="1606643308055">
-      <screen x="0" y="25" width="2467" height="1415" />
+    <state x="1219" y="513" key="SettingsEditor" timestamp="1607738013116">
+      <screen x="101" y="25" width="3339" height="1415" />
     </state>
     <state x="826" y="513" key="SettingsEditor/0.25.2467.1415@0.25.2467.1415" timestamp="1606643308055" />
     <state x="828" y="513" key="SettingsEditor/0.25.2473.1415@0.25.2473.1415" timestamp="1606482625339" />
+    <state x="1219" y="513" key="SettingsEditor/101.25.3339.1415@101.25.3339.1415" timestamp="1607738013116" />
+    <state x="458" y="172" key="SettingsEditor/79.25.1361.875@79.25.1361.875" timestamp="1607663216710" />
+    <state x="458" y="172" key="SettingsEditor/84.25.1356.875@84.25.1356.875" timestamp="1607675466593" />
     <state x="473" y="252" width="670" height="676" key="search.everywhere.popup" timestamp="1606556072941">
       <screen x="0" y="25" width="1603" height="1025" />
     </state>

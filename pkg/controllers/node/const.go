@@ -31,4 +31,9 @@ const (
 
 	// Type
 	OutOfDiskPressure v1.NodeConditionType = "OutOfDisk"
+
+	// Kubeshare affinity
+	Affinity     = "sim.k8s.io/Affinity"
+	AntiAffinity = "sim.k8s.io/AntiAffinity"
+	Exclusion    = "sim.k8s.io/Exclusion"
 )
