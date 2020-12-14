@@ -209,10 +209,10 @@ func (r *PodSimReconciler) scheduleGPUbyYoda(pod v1.Pod, cardList scv1.CardList,
 	scv.Status.FreeMemorySum = freeSum
 	scv.Status.CardList = cardList
 
-	label := map[string]string{
-		"scheduleGPUID": strconv.Itoa(maxCard),
-	}
-	pod.SetLabels(label)
+	//label := map[string]string{
+	//	"scheduleGPUID": strconv.Itoa(maxCard),
+	//}
+	//pod.SetLabels(label)
 
 	ops := []util.Ops{
 		{
@@ -228,10 +228,19 @@ func (r *PodSimReconciler) scheduleGPUbyYoda(pod v1.Pod, cardList scv1.CardList,
 }
 
 func (r *PodSimReconciler) scheduleGPUbyKubeShare(pod v1.Pod, cardList scv1.CardList, scv scv1.Scv) {
-	mem, _ := strconv.Atoi(pod.GetLabels()["scv/memory"])
-	GPUID, _ := strconv.Atoi(pod.GetLabels()["scheduleGPUID"])
+	mem := StrToUint64(pod.GetLabels()["scv/memory"])
+	minSub := ^uint64(0)
+	GPUID := 0
 
-	cardList[GPUID].FreeMemory -= uint64(mem)
+	for index, card := range cardList {
+		sub := card.FreeMemory - mem
+		if sub >= 0 && sub < minSub {
+			minSub = sub
+			GPUID = index
+		}
+	}
+
+	cardList[GPUID].FreeMemory -= mem
 
 	freeSum := uint64(0)
 	for _, card := range cardList {
@@ -386,4 +395,12 @@ func RemoveParam(sli []string, n string) []string {
 		}
 	}
 	return sli
+}
+
+func StrToUint64(str string) uint64 {
+	if i, e := strconv.Atoi(str); e != nil {
+		return 0
+	} else {
+		return uint64(i)
+	}
 }

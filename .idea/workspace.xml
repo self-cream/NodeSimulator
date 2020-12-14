@@ -3,9 +3,6 @@
   <component name="ChangeListManager">
     <list default="true" id="50a0f2d5-1284-404a-b4fb-6a70df043d6a" name="Default Changelist" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/go.mod" beforeDir="false" afterPath="$PROJECT_DIR$/go.mod" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/go.sum" beforeDir="false" afterPath="$PROJECT_DIR$/go.sum" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pkg/controllers/node/const.go" beforeDir="false" afterPath="$PROJECT_DIR$/pkg/controllers/node/const.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/pkg/controllers/pod/pod_controller.go" beforeDir="false" afterPath="$PROJECT_DIR$/pkg/controllers/pod/pod_controller.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -74,9 +71,10 @@
     <state x="1219" y="513" key="SettingsEditor/101.25.3339.1415@101.25.3339.1415" timestamp="1607738013116" />
     <state x="458" y="172" key="SettingsEditor/79.25.1361.875@79.25.1361.875" timestamp="1607663216710" />
     <state x="458" y="172" key="SettingsEditor/84.25.1356.875@84.25.1356.875" timestamp="1607675466593" />
-    <state x="473" y="252" width="670" height="676" key="search.everywhere.popup" timestamp="1606556072941">
-      <screen x="0" y="25" width="1603" height="1025" />
+    <state x="710" y="229" width="670" height="578" key="search.everywhere.popup" timestamp="1607932461837">
+      <screen x="84" y="25" width="1356" height="875" />
     </state>
     <state x="473" y="252" width="670" height="676" key="search.everywhere.popup/0.25.1603.1025@0.25.1603.1025" timestamp="1606556072941" />
+    <state x="710" y="229" width="670" height="578" key="search.everywhere.popup/84.25.1356.875@84.25.1356.875" timestamp="1607932461837" />
   </component>
 </project>
