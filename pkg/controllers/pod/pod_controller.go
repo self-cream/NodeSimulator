@@ -15,6 +15,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -23,6 +24,8 @@ type PodSimReconciler struct {
 	ClientSet *kubernetes.Clientset
 	Scheme    *runtime.Scheme
 }
+
+var wg sync.WaitGroup
 
 func (r *PodSimReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
@@ -62,6 +65,9 @@ func (r *PodSimReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 				pod.GetLabels()[nodecontroller.Exclusion] != "" {
 				r.cleanAffinityTags(ctx, pod, nodeName)
 			}
+
+			r.releaseResource(ctx, pod, nodeName)
+
 			gracePeriodSeconds := int64(0)
 			err = r.ClientSet.CoreV1().Pods(pod.GetNamespace()).Delete(pod.GetName(), &metav1.DeleteOptions{GracePeriodSeconds: &gracePeriodSeconds})
 			if err != nil && !apierrors.IsNotFound(err) {
@@ -71,7 +77,12 @@ func (r *PodSimReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 		}
 
 		r.SyncFakePod(pod.DeepCopy())
-		r.SyncGPUPod(ctx, nodeName)
+
+		wg.Add(1)
+
+		go r.SyncGPUPod(ctx, nodeName)
+
+		wg.Wait()
 	}
 
 	return ctrl.Result{}, nil
@@ -149,6 +160,7 @@ func (r *PodSimReconciler) SyncFakePod(pod *v1.Pod) {
 } //TODO: CPU,memory的allocatable数值的更新
 
 func (r *PodSimReconciler) SyncGPUPod(ctx context.Context, nodeName string) {
+	time.Sleep(time.Duration(2) * time.Minute)
 	scv := &scv1.Scv{}
 	err := r.Client.Get(ctx, types.NamespacedName{Name: nodeName}, scv)
 	if err != nil {
@@ -186,7 +198,12 @@ func (r *PodSimReconciler) SyncGPUPod(ctx context.Context, nodeName string) {
 			r.scheduleGPUbyYoda(pod, cardList, *scv)
 		}
 
+		nowTime := metav1.Time{Time: time.Now()}
+		pod.SetDeletionTimestamp(&nowTime)  //TODO: 设置pod过一定时间删除
+
 	}
+
+	wg.Done()
 }
 
 func (r *PodSimReconciler) scheduleGPUbyYoda(pod v1.Pod, cardList scv1.CardList, scv scv1.Scv) {
@@ -209,10 +226,15 @@ func (r *PodSimReconciler) scheduleGPUbyYoda(pod v1.Pod, cardList scv1.CardList,
 	scv.Status.FreeMemorySum = freeSum
 	scv.Status.CardList = cardList
 
-	//label := map[string]string{
-	//	"scheduleGPUID": strconv.Itoa(maxCard),
-	//}
-	//pod.SetLabels(label)
+	label := map[string]string{
+		"scheduleGPUID": strconv.Itoa(maxCard),
+	}
+	pod.SetLabels(label)
+
+	err := r.Client.Update(context.TODO(), &pod)
+	if err != nil {
+		klog.Errorf("Pod: %v/%v Update Label Error: %v", pod.GetNamespace(), pod.GetName(), err)
+	}
 
 	ops := []util.Ops{
 		{
@@ -221,7 +243,7 @@ func (r *PodSimReconciler) scheduleGPUbyYoda(pod v1.Pod, cardList scv1.CardList,
 			Value: scv.Status,
 		},
 	}
-	err := r.Client.Patch(context.TODO(), &scv, &util.Patch{PatchOps: ops})
+	err = r.Client.Patch(context.TODO(), &scv, &util.Patch{PatchOps: ops})
 	if err != nil {
 		klog.Errorf("Scv: %v Patch Status Error: %v", scv.GetName(), err)
 	}
@@ -238,6 +260,16 @@ func (r *PodSimReconciler) scheduleGPUbyKubeShare(pod v1.Pod, cardList scv1.Card
 			minSub = sub
 			GPUID = index
 		}
+	}
+
+	label := map[string]string{
+		"scheduleGPUID": strconv.Itoa(GPUID),
+	}
+	pod.SetLabels(label)
+
+	err := r.Client.Update(context.TODO(), &pod)
+	if err != nil {
+		klog.Errorf("Pod: %v/%v Update Label Error: %v", pod.GetNamespace(), pod.GetName(), err)
 	}
 
 	cardList[GPUID].FreeMemory -= mem
@@ -257,7 +289,7 @@ func (r *PodSimReconciler) scheduleGPUbyKubeShare(pod v1.Pod, cardList scv1.Card
 			Value: scv.Status,
 		},
 	}
-	err := r.Client.Patch(context.TODO(), &scv, &util.Patch{PatchOps: ops})
+	err = r.Client.Patch(context.TODO(), &scv, &util.Patch{PatchOps: ops})
 	if err != nil {
 		klog.Errorf("Scv: %v Patch Status Error: %v", scv.GetName(), err)
 	}
@@ -379,6 +411,43 @@ func (r *PodSimReconciler) cleanAffinityTags (ctx context.Context, pod *v1.Pod, 
 		GPUID, _ := strconv.Atoi(pod.GetLabels()["scheduleGPUID"])
 		RemoveParam(cardList[GPUID].ExclusionTag, pod.GetLabels()[nodecontroller.Exclusion])
 	}
+}
+
+func (r *PodSimReconciler) releaseResource (ctx context.Context, pod *v1.Pod, nodeName string) {
+	scv := &scv1.Scv{}
+	err := r.Client.Get(ctx, types.NamespacedName{Name: nodeName}, scv)
+	if err != nil {
+		klog.Errorf("Node: %v Get Scv Error: %v", nodeName, err)
+		return
+	}
+
+	cardList := scv.Status.CardList
+
+	GPUID, _ := strconv.Atoi(pod.GetLabels()["scheduleGPUID"])
+	mem := StrToUint64(pod.GetLabels()["scv/memory"])
+	cardList[GPUID].FreeMemory += mem
+
+	freeSum := uint64(0)
+	for _, card := range cardList {
+		freeSum += card.FreeMemory
+	}
+
+	scv.Status.FreeMemorySum = freeSum
+	scv.Status.CardList = cardList
+
+	ops := []util.Ops{
+		{
+			Op:    "replace",
+			Path:  "/status",
+			Value: scv.Status,
+		},
+	}
+
+	err = r.Client.Patch(context.TODO(), scv, &util.Patch{PatchOps: ops})
+	if err != nil {
+		klog.Errorf("Scv: %v Patch Status Error: %v", scv.GetName(), err)
+	}
+
 }
 
 func RemoveParam(sli []string, n string) []string {
