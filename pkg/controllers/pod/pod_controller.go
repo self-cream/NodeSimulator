@@ -33,9 +33,8 @@ func (r *PodSimReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *PodSimReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
+func (r *PodSimReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	var (
-		ctx = context.Background()
 		pod = &v1.Pod{}
 		err = r.Client.Get(ctx, req.NamespacedName, pod)
 	)
@@ -69,7 +68,7 @@ func (r *PodSimReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 			r.releaseResource(ctx, pod, nodeName)
 
 			gracePeriodSeconds := int64(0)
-			err = r.ClientSet.CoreV1().Pods(pod.GetNamespace()).Delete(pod.GetName(), &metav1.DeleteOptions{GracePeriodSeconds: &gracePeriodSeconds})
+			err = r.ClientSet.CoreV1().Pods(pod.GetNamespace()).Delete(context.TODO(), pod.GetName(), metav1.DeleteOptions{GracePeriodSeconds: &gracePeriodSeconds})
 			if err != nil && !apierrors.IsNotFound(err) {
 				klog.Errorf("Delete Pod: %v Error: %v", req.String(), err)
 			}

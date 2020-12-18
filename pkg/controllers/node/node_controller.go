@@ -46,9 +46,8 @@ type NodeSimReconciler struct {
 // +kubebuilder:rbac:groups=sim.k8s.io,resources=nodesimulators,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=sim.k8s.io,resources=nodesimulators/status,verbs=get;update;patch
 
-func (r *NodeSimReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
+func (r *NodeSimReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	var (
-		ctx      = context.Background()
 		nodeSim  = &simv1.NodeSimulator{}
 		nodeList = &v1.NodeList{}
 		err      = r.Client.Get(ctx, req.NamespacedName, nodeSim)
