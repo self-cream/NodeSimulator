@@ -14,6 +14,6 @@ require (
 )
 
 replace (
-	github.com/NJUPT-ISL/SCV => github.com/self-cream/SCV v0.0.0-20201213061001-6c337bbac7a5 //indirect
+	github.com/NJUPT-ISL/SCV => github.com/self-cream/SCV v0.0.0-20201221024418-47401c0d23b4 //indirect
 	k8s.io/client-go => k8s.io/client-go v0.20.0
 )

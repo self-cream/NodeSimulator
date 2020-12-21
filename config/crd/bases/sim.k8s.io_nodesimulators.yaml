@@ -34,7 +34,11 @@ spec:
         spec:
           description: NodeSimulatorSpec defines the desired state of NodeSimulator
           properties:
+            bandwidth:
+              type: string
             cpu:
+              type: string
+            disk:
               type: string
             gpu:
               properties:
@@ -55,12 +59,17 @@ spec:
               type: string
             podNumber:
               type: string
+            region:
+              type: string
           required:
+          - bandwidth
           - cpu
+          - disk
           - memory
           - number
           - podCidr
           - podNumber
+          - region
           type: object
         status:
           description: NodeSimulatorStatus defines the observed state of NodeSimulator

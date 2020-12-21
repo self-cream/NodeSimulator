@@ -197,9 +197,6 @@ func (r *PodSimReconciler) SyncGPUPod(ctx context.Context, nodeName string) {
 			r.scheduleGPUbyYoda(pod, cardList, *scv)
 		}
 
-		nowTime := metav1.Time{Time: time.Now()}
-		pod.SetDeletionTimestamp(&nowTime)  //TODO: 设置pod过一定时间删除
-
 	}
 
 	wg.Done()
@@ -294,9 +291,7 @@ func (r *PodSimReconciler) scheduleGPUbyKubeShare(pod v1.Pod, cardList scv1.Card
 	}
 }
 
-
-
-func (r *PodSimReconciler) addAffinityTags (ctx context.Context, pod *v1.Pod, nodeName string) {
+func (r *PodSimReconciler) addAffinityTags(ctx context.Context, pod *v1.Pod, nodeName string) {
 	scv := &scv1.Scv{}
 	err := r.Client.Get(ctx, types.NamespacedName{Name: nodeName}, scv)
 	if err != nil {
@@ -320,8 +315,6 @@ func (r *PodSimReconciler) addAffinityTags (ctx context.Context, pod *v1.Pod, no
 	}
 
 	cardList := scv.Status.CardList
-
-
 
 	if pod.GetLabels()[nodecontroller.Affinity] != "" {
 		for _, podItem := range podListWithNode {
@@ -354,7 +347,7 @@ func (r *PodSimReconciler) addAffinityTags (ctx context.Context, pod *v1.Pod, no
 	}
 }
 
-func (r *PodSimReconciler) cleanAffinityTags (ctx context.Context, pod *v1.Pod, nodeName string) {
+func (r *PodSimReconciler) cleanAffinityTags(ctx context.Context, pod *v1.Pod, nodeName string) {
 	scv := &scv1.Scv{}
 	err := r.Client.Get(ctx, types.NamespacedName{Name: nodeName}, scv)
 	if err != nil {
@@ -378,8 +371,6 @@ func (r *PodSimReconciler) cleanAffinityTags (ctx context.Context, pod *v1.Pod, 
 	}
 
 	cardList := scv.Status.CardList
-
-
 
 	if pod.GetLabels()[nodecontroller.Affinity] != "" {
 		for _, podItem := range podListWithNode {
@@ -412,7 +403,7 @@ func (r *PodSimReconciler) cleanAffinityTags (ctx context.Context, pod *v1.Pod, 
 	}
 }
 
-func (r *PodSimReconciler) releaseResource (ctx context.Context, pod *v1.Pod, nodeName string) {
+func (r *PodSimReconciler) releaseResource(ctx context.Context, pod *v1.Pod, nodeName string) {
 	scv := &scv1.Scv{}
 	err := r.Client.Get(ctx, types.NamespacedName{Name: nodeName}, scv)
 	if err != nil {
@@ -454,7 +445,7 @@ func RemoveParam(sli []string, n string) []string {
 		if sli[i] == n {
 			if i == 0 {
 				sli = sli[1:]
-			} else if i == len(sli) - 1 {
+			} else if i == len(sli)-1 {
 				sli = sli[:i]
 			} else {
 				sli = append(sli[:i], sli[i+1:]...)

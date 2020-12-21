@@ -9,6 +9,31 @@ import (
 	"strconv"
 )
 
+func SelectGPUModel(nodesim *simv1.NodeSimulator) (*simv1.NodeSimulator) {
+	if nodesim.Spec.GpuModel == "GTX-1660" {
+		nodesim.Spec.GPU.Memory = strconv.Itoa(6000)
+		nodesim.Spec.GPU.Core = strconv.Itoa(1785)
+		nodesim.Spec.GPU.Bandwidth = strconv.Itoa(188)
+		nodesim.Spec.GPU.CoreNumber = 1408
+		}
+
+	if nodesim.Spec.GpuModel == "TITAN-Xp" {
+		nodesim.Spec.GPU.Memory = strconv.Itoa(12288)
+		nodesim.Spec.GPU.Core = strconv.Itoa(1582)
+		nodesim.Spec.GPU.Bandwidth = strconv.Itoa(548)
+		nodesim.Spec.GPU.CoreNumber = 3840
+	}
+
+	if nodesim.Spec.GpuModel == "Tesla P100" {
+		nodesim.Spec.GPU.Memory = strconv.Itoa(16384)
+		nodesim.Spec.GPU.Core = strconv.Itoa(1328)
+		nodesim.Spec.GPU.Bandwidth = strconv.Itoa(188)
+		nodesim.Spec.GPU.CoreNumber = 1408
+	}
+
+	return nodesim
+}
+
 func GenNode(nodesim *simv1.NodeSimulator) (*v1.Node, error) {
 	labels := make(map[string]string, 0)
 	labels[ManageLabelKey] = ManageLabelValue
@@ -55,17 +80,17 @@ func GenNode(nodesim *simv1.NodeSimulator) (*v1.Node, error) {
 		},
 		Status: v1.NodeStatus{
 			Capacity: map[v1.ResourceName]resource.Quantity{
-				"cpu":    cpu,
-				"memory": memory,
-				"pods":   pods,
-				"disk": disk,
+				"cpu":       cpu,
+				"memory":    memory,
+				"pods":      pods,
+				"disk":      disk,
 				"bandwidth": bandwidth,
 			},
 			Allocatable: map[v1.ResourceName]resource.Quantity{
-				"cpu":    cpu,
-				"memory": memory,
-				"pods":   pods,
-				"disk": disk,
+				"cpu":       cpu,
+				"memory":    memory,
+				"pods":      pods,
+				"disk":      disk,
 				"bandwidth": bandwidth,
 			},
 
@@ -81,40 +106,54 @@ func GenNode(nodesim *simv1.NodeSimulator) (*v1.Node, error) {
 		},
 	}
 
-	if nodesim.Spec.Gpu.Number > 0 {
-		number, err := resource.ParseQuantity(strconv.Itoa(nodesim.Spec.Gpu.Number))
-		if err != nil {
-			klog.Errorf("NodeSim: %v/%v GPU Number ParseQuantity Error: %v", nodesim.GetNamespace(), nodesim.GetName(), err)
-			return nil, err
-		}
-		node.Status.Allocatable["gpu/number"] = number
-		node.Status.Capacity["gpu/number"] = number
+	if nodesim.Spec.GpuModel != "" {
+		nodesim = SelectGPUModel(nodesim)
 
-		bandwidth, err := resource.ParseQuantity(nodesim.Spec.Gpu.Bandwidth)
-		if err != nil {
-			klog.Errorf("NodeSim: %v/%v GPU Bandwidth ParseQuantity Error: %v", nodesim.GetNamespace(), nodesim.GetName(), err)
-			return nil, err
-		}
-		node.Status.Allocatable["gpu/bandwidth"] = bandwidth
-		node.Status.Capacity["gpu/bandwidth"] = bandwidth
+		if nodesim.Spec.GPU.Number > 0 {
+			number, err := resource.ParseQuantity(strconv.Itoa(nodesim.Spec.GPU.Number))
+			if err != nil {
+				klog.Errorf("NodeSim: %v/%v GPU Number ParseQuantity Error: %v", nodesim.GetNamespace(), nodesim.GetName(), err)
+				return nil, err
+			}
+			node.Status.Allocatable["gpu/number"] = number
+			node.Status.Capacity["gpu/number"] = number
 
-		memory, err := resource.ParseQuantity(nodesim.Spec.Gpu.Memory)
-		if err != nil {
-			klog.Errorf("NodeSim: %v/%v GPU Memory ParseQuantity Error: %v", nodesim.GetNamespace(), nodesim.GetName(), err)
-			return nil, err
-		}
-		node.Status.Allocatable["gpu/memory"] = memory
-		node.Status.Capacity["gpu/memory"] = memory
+			bandwidth, err := resource.ParseQuantity(nodesim.Spec.GPU.Bandwidth)
+			if err != nil {
+				klog.Errorf("NodeSim: %v/%v GPU Bandwidth ParseQuantity Error: %v", nodesim.GetNamespace(), nodesim.GetName(), err)
+				return nil, err
+			}
+			node.Status.Allocatable["gpu/bandwidth"] = bandwidth
+			node.Status.Capacity["gpu/bandwidth"] = bandwidth
 
-		core, err := resource.ParseQuantity(nodesim.Spec.Gpu.Core)
-		if err != nil {
-			klog.Errorf("NodeSim: %v/%v GPU Core ParseQuantity Error: %v", nodesim.GetNamespace(), nodesim.GetName(), err)
-			return nil, err
-		}
-		node.Status.Allocatable["gpu/core"] = core
-		node.Status.Capacity["gpu/core"] = core
+			memory, err := resource.ParseQuantity(nodesim.Spec.GPU.Memory)
+			if err != nil {
+				klog.Errorf("NodeSim: %v/%v GPU Memory ParseQuantity Error: %v", nodesim.GetNamespace(), nodesim.GetName(), err)
+				return nil, err
+			}
+			node.Status.Allocatable["gpu/memory"] = memory
+			node.Status.Capacity["gpu/memory"] = memory
 
+			core, err := resource.ParseQuantity(nodesim.Spec.GPU.Core)
+			if err != nil {
+				klog.Errorf("NodeSim: %v/%v GPU Core ParseQuantity Error: %v", nodesim.GetNamespace(), nodesim.GetName(), err)
+				return nil, err
+			}
+			node.Status.Allocatable["gpu/core"] = core
+			node.Status.Capacity["gpu/core"] = core
+
+			coreNumber, err := resource.ParseQuantity(strconv.Itoa(nodesim.Spec.GPU.CoreNumber))
+			if err != nil {
+				klog.Errorf("NodeSim: %v/%v GPU Core number ParseQuantity Error: %v", nodesim.GetNamespace(), nodesim.GetName(), err)
+				return nil, err
+			}
+			node.Status.Allocatable["gpu/coreNumber"] = coreNumber
+			node.Status.Capacity["gpu/coreNumber"] = coreNumber
+
+		}
 	}
+
+
 
 	return node, nil
 }

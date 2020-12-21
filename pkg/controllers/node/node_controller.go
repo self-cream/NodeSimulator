@@ -226,7 +226,7 @@ func (r *NodeSimReconciler) SyncFakeNode(ctx context.Context, nodeSim *simv1.Nod
 	util.ParallelizeSyncNode(ctx, 5, nodeList, SyncNode)
 
 	SyncNodeGPU := func(ctx context.Context, node *v1.Node) {
-		if nodeSim.Spec.Gpu.Number <= 0 {
+		if nodeSim.Spec.GPU.Number <= 0 {
 			return
 		}
 
@@ -235,20 +235,23 @@ func (r *NodeSimReconciler) SyncFakeNode(ctx context.Context, nodeSim *simv1.Nod
 
 		memSum := uint64(0)
 
-		for i := 0; i < nodeSim.Spec.Gpu.Number; i++ {
-			card := scv1.Card{
-				ID:          uint(i),
-				Health:      "Healthy",
-				Model:       "RTX TITAN",
-				Power:       250,
-				TotalMemory: strToUint64(nodeSim.Spec.Gpu.Memory),
-				Clock:       6000,
-				FreeMemory:  strToUint64(nodeSim.Spec.Gpu.Memory),
-				Core:        strToUint(nodeSim.Spec.Gpu.Core),
-				Bandwidth:   strToUint(nodeSim.Spec.Gpu.Bandwidth),
-			}
-			cardList = append(cardList, card)
-			memSum += strToUint64(nodeSim.Spec.Gpu.Memory)
+		for i := 0; i < nodeSim.Spec.GPU.Number; i++ {
+				card := scv1.Card{
+					ID:          uint(i),
+					Health:      "Healthy",
+					Model:       nodeSim.Spec.GpuModel,
+					Power:       250,
+					TotalMemory: strToUint64(nodeSim.Spec.GPU.Memory),
+					Clock:       6000,
+					FreeMemory:  strToUint64(nodeSim.Spec.GPU.Memory),
+					Core:        strToUint(nodeSim.Spec.GPU.Core),
+					Bandwidth:   strToUint(nodeSim.Spec.GPU.Bandwidth),
+					CoreNumber:  uint(nodeSim.Spec.GPU.CoreNumber),
+
+				}
+				cardList = append(cardList, card)
+
+			memSum += strToUint64(nodeSim.Spec.GPU.Memory)
 		}
 
 		updateTime := metav1.Time{Time: time.Now()}
@@ -262,7 +265,7 @@ func (r *NodeSimReconciler) SyncFakeNode(ctx context.Context, nodeSim *simv1.Nod
 			},
 			Status: scv1.ScvStatus{
 				CardList:       cardList,
-				CardNumber:     uint(nodeSim.Spec.Gpu.Number),
+				CardNumber:     uint(nodeSim.Spec.GPU.Number),
 				TotalMemorySum: memSum,
 				FreeMemorySum:  memSum,
 				UpdateTime:     &updateTime,
