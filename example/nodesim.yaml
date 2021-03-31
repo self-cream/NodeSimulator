@@ -1,0 +1,16 @@
+apiVersion: sim.k8s.io/v1
+kind: NodeSimulator
+metadata:
+  name: 1660-node
+spec:
+  cpu: "20k"
+  memory: "512Gi"
+  podNumber: "100"
+  podCidr: "172.12.1.0/8"
+  number: 2
+  bandwidth: "100Mi"
+  region: "beijing"
+  disk: "4Ti"
+  gpuModel: "GTX-1660"
+  gpu:
+    number: 4

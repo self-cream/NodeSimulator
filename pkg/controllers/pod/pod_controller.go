@@ -2,6 +2,7 @@ package pod
 
 import (
 	"context"
+	"fmt"
 	nodecontroller "github.com/NJUPT-ISL/NodeSimulator/pkg/controllers/node"
 	"github.com/NJUPT-ISL/NodeSimulator/pkg/util"
 	scv1 "github.com/NJUPT-ISL/SCV/api/v1"
@@ -12,10 +13,10 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog"
+	"math/rand"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"strconv"
-	"sync"
 	"time"
 )
 
@@ -24,8 +25,6 @@ type PodSimReconciler struct {
 	ClientSet *kubernetes.Clientset
 	Scheme    *runtime.Scheme
 }
-
-var wg sync.WaitGroup
 
 func (r *PodSimReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
@@ -59,29 +58,97 @@ func (r *PodSimReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 
 		if pod.GetDeletionTimestamp() != nil {
-			if pod.GetLabels()[nodecontroller.Affinity] != "" ||
-				pod.GetLabels()[nodecontroller.AntiAffinity] != "" ||
-				pod.GetLabels()[nodecontroller.Exclusion] != "" {
-				r.cleanAffinityTags(ctx, pod, nodeName)
+			scv := &scv1.Scv{}
+			err := r.Client.Get(ctx, types.NamespacedName{Name: nodeName}, scv)
+			if err != nil {
+				klog.Errorf("Node: %v Get Scv Error: %v", nodeName, err)
+				return ctrl.Result{}, err
 			}
 
-			r.releaseResource(ctx, pod, nodeName)
+			podListWithNode := make([]v1.Pod, 0)
+			podList := &v1.PodList{}
+
+			err = r.Client.List(ctx, podList, &client.MatchingLabels{
+				nodecontroller.ManageLabelKey: nodecontroller.ManageLabelValue,
+			})
+			if err != nil {
+				klog.Errorf("List Pod Error: %v", err)
+				return ctrl.Result{}, err
+			}
+
+			for _, pod := range podList.Items {
+				if pod.Spec.NodeName == nodeName {
+					if pod.GetDeletionTimestamp() == nil {
+						podListWithNode = append(podListWithNode, pod)
+					}
+				}
+			}
+
+			cardList := scv.Status.CardList
+
+			for i, card := range cardList {
+				cardList[i].FreeMemory = card.TotalMemory
+			}
+
+			for _, pod := range podListWithNode {
+				labels := pod.GetLabels()
+				mem := StrToUint64(labels["scv/memory"])
+				minSub := ^uint64(0)
+				GPUID := 0
+
+				for index, card := range cardList {
+					sub := card.FreeMemory - mem
+					if sub >= 0 && sub < minSub {
+						minSub = sub
+						GPUID = index
+					}
+				}
+				if gpuID, ok := labels[scheduleGPUID]; ok {
+					GPUID, err = strconv.Atoi(gpuID)
+					if err != nil {
+						cardList[GPUID].FreeMemory -= mem
+					}
+				}
+			}
+
+			freeSum := uint64(0)
+			for _, card := range cardList {
+				freeSum += card.FreeMemory
+			}
+
+			scv.Status.FreeMemorySum = freeSum
+			scv.Status.CardList = cardList
+
+			ops := []util.Ops{
+				{
+					Op:    "replace",
+					Path:  "/status",
+					Value: scv.Status,
+				},
+			}
+
+			err = r.Client.Patch(context.TODO(), scv, &util.Patch{PatchOps: ops})
+
+			if err != nil {
+				klog.Errorf("Scv: %v Patch Status Error: %v", scv.GetName(), err)
+			}
+			_, hasAffinity := labels[nodecontroller.Affinity]
+			_, hasAntiAffinity := labels[nodecontroller.AntiAffinity]
+			_, hasExclusion := labels[nodecontroller.Exclusion]
+			if hasAffinity || hasAntiAffinity || hasExclusion {
+				r.cleanAffinityTags(labels, ctx, pod, nodeName)
+			}
 
 			gracePeriodSeconds := int64(0)
 			err = r.ClientSet.CoreV1().Pods(pod.GetNamespace()).Delete(context.TODO(), pod.GetName(), metav1.DeleteOptions{GracePeriodSeconds: &gracePeriodSeconds})
+
 			if err != nil && !apierrors.IsNotFound(err) {
 				klog.Errorf("Delete Pod: %v Error: %v", req.String(), err)
 			}
 			return ctrl.Result{}, nil
 		}
-
 		r.SyncFakePod(pod.DeepCopy())
-
-		wg.Add(1)
-
-		go r.SyncGPUPod(ctx, nodeName)
-
-		wg.Wait()
+		r.SyncGPUPod(ctx, *pod)
 	}
 
 	return ctrl.Result{}, nil
@@ -158,117 +225,194 @@ func (r *PodSimReconciler) SyncFakePod(pod *v1.Pod) {
 	}
 } //TODO: CPU,memory的allocatable数值的更新
 
-func (r *PodSimReconciler) SyncGPUPod(ctx context.Context, nodeName string) {
-	time.Sleep(time.Duration(2) * time.Minute)
+func (r *PodSimReconciler) SyncGPUPod(ctx context.Context, pod v1.Pod) {
 	scv := &scv1.Scv{}
-	err := r.Client.Get(ctx, types.NamespacedName{Name: nodeName}, scv)
+	err := r.Client.Get(ctx, types.NamespacedName{Name: pod.Spec.NodeName}, scv)
 	if err != nil {
-		klog.Errorf("Node: %v Get Scv Error: %v", nodeName, err)
+		klog.Errorf("Node: %v Get Scv Error: %v", pod.Spec.NodeName, err)
 		return
 	}
 
 	podListWithNode := make([]v1.Pod, 0)
 	podList := &v1.PodList{}
 
-	err = r.Client.List(ctx, podList)
+	err = r.Client.List(ctx, podList, &client.MatchingLabels{
+		nodecontroller.ManageLabelKey: nodecontroller.ManageLabelValue,
+	})
 	if err != nil {
 		klog.Errorf("List Pod Error: %v", err)
 		return
 	}
 
-	for _, pod := range podList.Items {
-		if pod.Spec.NodeName == nodeName {
-			podListWithNode = append(podListWithNode, pod)
+	for _, item := range podList.Items {
+		if item.Spec.NodeName == pod.Spec.NodeName {
+			podListWithNode = append(podListWithNode, item)
 		}
 	}
 
 	cardList := scv.Status.CardList
 
-	for i, card := range cardList {
-		cardList[i].FreeMemory = card.TotalMemory
+	labels := pod.GetLabels()
+	_, ok := labels[scheduleGPUID]
+
+	if len(podListWithNode) == 1 && !ok {
+		fmt.Println("start to initialize cardlist")
+		for i, card := range cardList {
+			cardList[i].FreeMemory = card.TotalMemory
+		}
+
+		freeSum := uint64(0)
+		for _, card := range cardList {
+			freeSum += card.FreeMemory
+		}
+
+		scv.Status.FreeMemorySum = freeSum
+		scv.Status.CardList = cardList
+
+		ops := []util.Ops{
+			{
+				Op:    "replace",
+				Path:  "/status",
+				Value: scv.Status,
+			},
+		}
+
+		err = r.Client.Patch(context.TODO(), scv, &util.Patch{PatchOps: ops})
+		if err != nil {
+			klog.Errorf("Scv: %v Patch Status Error: %v", scv.GetName(), err)
+		}
 	}
+
 	for _, pod := range podListWithNode {
-		if pod.GetLabels()[nodecontroller.Affinity] != "" ||
-			pod.GetLabels()[nodecontroller.AntiAffinity] != "" ||
-			pod.GetLabels()[nodecontroller.Exclusion] != "" {
-			r.addAffinityTags(ctx, &pod, nodeName)
-			r.scheduleGPUbyKubeShare(pod, cardList, *scv)
+		labels := pod.GetLabels()
+		_, hasAffinity := labels[nodecontroller.Affinity]
+		antiAffinityTag, hasAntiAffinity := labels[nodecontroller.AntiAffinity]
+		exclusionTag, hasExclusion := labels[nodecontroller.Exclusion]
+		if hasAffinity || hasAntiAffinity || hasExclusion {
+			mem := StrToUint64(labels["scv/memory"])
+			minSub := uint64(0)
+			GPUID := 0
+			filterCardList := cardList.DeepCopy()
+			if hasAntiAffinity {
+				for _, card := range filterCardList {
+					for _, tag := range card.AntiAffinityTag {
+						if antiAffinityTag == tag {
+							filterCardList = RemoveCard(filterCardList, card)
+							break
+						}
+					}
+				}
+			}
+
+			if hasExclusion {
+				for _, card := range filterCardList {
+					if len(card.ExclusionTag) != 0 {
+						for _, tag := range card.ExclusionTag {
+							if exclusionTag != tag {
+								filterCardList = RemoveCard(filterCardList, card)
+								break
+							}
+						}
+					}
+				}
+			}
+
+			for _, card := range filterCardList {
+				sub := card.FreeMemory - mem
+				if sub >= 0 && sub > minSub {
+					minSub = sub
+					GPUID = int(card.ID)
+				}
+			}
+
+			if _, ok := labels[scheduleGPUID]; !ok {
+				fmt.Println("start to set GPUID label")
+				labels[scheduleGPUID] = strconv.Itoa(GPUID)
+				updatePod := pod.DeepCopy()
+				updatePod.SetLabels(labels)
+
+				ops := []util.Ops{
+					{
+						Op:    "replace",
+						Path:  "/metadata/labels",
+						Value: updatePod.GetLabels(),
+					},
+				}
+
+				err = r.Client.Patch(context.TODO(), updatePod, &util.Patch{PatchOps: ops})
+
+				if err != nil {
+					klog.Errorf("Pod: %v/%v Patch Label Error: %v", updatePod.GetNamespace(), updatePod.GetName(), err)
+				}
+
+				cardList[GPUID].FreeMemory -= mem
+			}
+		} else if pod.Spec.SchedulerName == "native-scheduler" {
+			if _, ok := labels[scheduleGPUID]; !ok {
+				mem := int64(0)
+				for _, container := range pod.Spec.Containers {
+					quantity := container.Resources.Requests["gpu/memory"]
+					q := quantity.DeepCopy()
+					mem += q.Value()
+				}
+				rand.Seed(time.Now().UnixNano())
+				cardID := rand.Intn(4)
+				fmt.Println("start to set GPUID label--native scheduler")
+				labels[scheduleGPUID] = strconv.Itoa(cardID)
+				updatePod := pod.DeepCopy()
+				updatePod.SetLabels(labels)
+
+				ops := []util.Ops{
+					{
+						Op:    "replace",
+						Path:  "/metadata/labels",
+						Value: updatePod.GetLabels(),
+					},
+				}
+
+				err = r.Client.Patch(context.TODO(), updatePod, &util.Patch{PatchOps: ops})
+
+				if err != nil {
+					klog.Errorf("Pod: %v/%v Patch Label Error: %v", updatePod.GetNamespace(), updatePod.GetName(), err)
+				}
+
+				cardList[cardID].FreeMemory -= uint64(mem)
+			}
 		} else {
-			r.scheduleGPUbyYoda(pod, cardList, *scv)
-		}
+			mem, _ := strconv.Atoi(labels["scv/memory"])
+			maxCard := 0
+			maxMemory := uint64(0)
+			for i, card := range cardList {
+				if maxMemory < card.FreeMemory {
+					maxCard = i
+					maxMemory = card.FreeMemory
+				}
+			}
 
-	}
+			if _, ok := labels[scheduleGPUID]; !ok {
+				fmt.Println("start to set GPUID label")
+				labels[scheduleGPUID] = strconv.Itoa(maxCard)
+				updatePod := pod.DeepCopy()
+				updatePod.SetLabels(labels)
 
-	wg.Done()
-}
+				ops := []util.Ops{
+					{
+						Op:    "replace",
+						Path:  "/metadata/labels",
+						Value: updatePod.GetLabels(),
+					},
+				}
 
-func (r *PodSimReconciler) scheduleGPUbyYoda(pod v1.Pod, cardList scv1.CardList, scv scv1.Scv) {
-	mem, _ := strconv.Atoi(pod.GetLabels()["scv/memory"])
-	maxCard := 0
-	maxMemory := uint64(0)
-	for i, card := range cardList {
-		if maxMemory < card.FreeMemory {
-			maxCard = i
-			maxMemory = card.FreeMemory
-		}
-	}
+				err = r.Client.Patch(context.TODO(), updatePod, &util.Patch{PatchOps: ops})
 
-	cardList[maxCard].FreeMemory -= uint64(mem)
+				if err != nil {
+					klog.Errorf("Pod: %v/%v Patch Label Error: %v", updatePod.GetNamespace(), updatePod.GetName(), err)
+				}
 
-	freeSum := uint64(0)
-	for _, card := range cardList {
-		freeSum += card.FreeMemory
-	}
-	scv.Status.FreeMemorySum = freeSum
-	scv.Status.CardList = cardList
-
-	label := map[string]string{
-		"scheduleGPUID": strconv.Itoa(maxCard),
-	}
-	pod.SetLabels(label)
-
-	err := r.Client.Update(context.TODO(), &pod)
-	if err != nil {
-		klog.Errorf("Pod: %v/%v Update Label Error: %v", pod.GetNamespace(), pod.GetName(), err)
-	}
-
-	ops := []util.Ops{
-		{
-			Op:    "replace",
-			Path:  "/status",
-			Value: scv.Status,
-		},
-	}
-	err = r.Client.Patch(context.TODO(), &scv, &util.Patch{PatchOps: ops})
-	if err != nil {
-		klog.Errorf("Scv: %v Patch Status Error: %v", scv.GetName(), err)
-	}
-}
-
-func (r *PodSimReconciler) scheduleGPUbyKubeShare(pod v1.Pod, cardList scv1.CardList, scv scv1.Scv) {
-	mem := StrToUint64(pod.GetLabels()["scv/memory"])
-	minSub := ^uint64(0)
-	GPUID := 0
-
-	for index, card := range cardList {
-		sub := card.FreeMemory - mem
-		if sub >= 0 && sub < minSub {
-			minSub = sub
-			GPUID = index
+				cardList[maxCard].FreeMemory -= uint64(mem)
+			}
 		}
 	}
-
-	label := map[string]string{
-		"scheduleGPUID": strconv.Itoa(GPUID),
-	}
-	pod.SetLabels(label)
-
-	err := r.Client.Update(context.TODO(), &pod)
-	if err != nil {
-		klog.Errorf("Pod: %v/%v Update Label Error: %v", pod.GetNamespace(), pod.GetName(), err)
-	}
-
-	cardList[GPUID].FreeMemory -= mem
 
 	freeSum := uint64(0)
 	for _, card := range cardList {
@@ -285,13 +429,103 @@ func (r *PodSimReconciler) scheduleGPUbyKubeShare(pod v1.Pod, cardList scv1.Card
 			Value: scv.Status,
 		},
 	}
-	err = r.Client.Patch(context.TODO(), &scv, &util.Patch{PatchOps: ops})
+
+	time.Sleep(10 * time.Second)
+
+	err = r.Client.Patch(context.TODO(), scv, &util.Patch{PatchOps: ops})
 	if err != nil {
 		klog.Errorf("Scv: %v Patch Status Error: %v", scv.GetName(), err)
 	}
+
+	for _, pod := range podListWithNode {
+		labels := pod.GetLabels()
+		isFound := false
+
+		if value, ok := labels[nodecontroller.Affinity]; ok {
+			if id, ok := labels[scheduleGPUID]; ok {
+				GPUID, err := strconv.Atoi(id)
+				if err != nil {
+					fmt.Println("convert GPUID failed")
+				}
+				for _, tag := range cardList[GPUID].AffinityTag {
+					if value == tag {
+						isFound = true
+					}
+				}
+			}
+
+			if !isFound {
+				if id, ok := labels[scheduleGPUID]; ok {
+					GPUID, err := strconv.Atoi(id)
+					if err != nil {
+						fmt.Println("convert GPUID failed")
+					}
+					cardList[GPUID].AffinityTag = append(cardList[GPUID].AffinityTag, value)
+					fmt.Println(cardList[GPUID].AffinityTag)
+				}
+
+			}
+		}
+
+		if value, ok := labels[nodecontroller.AntiAffinity]; ok {
+			isFound = false
+			if id, ok := labels[scheduleGPUID]; ok {
+				GPUID, err := strconv.Atoi(id)
+				if err != nil {
+					fmt.Println("convert GPUID failed")
+				}
+				for _, tag := range cardList[GPUID].AntiAffinityTag {
+					if value == tag {
+						isFound = true
+					}
+				}
+			}
+			if !isFound {
+				if id, ok := labels[scheduleGPUID]; ok {
+					GPUID, err := strconv.Atoi(id)
+					if err != nil {
+						fmt.Println("convert GPUID failed")
+					}
+					cardList[GPUID].AntiAffinityTag = append(cardList[GPUID].AntiAffinityTag, value)
+				}
+
+			}
+		}
+
+		if value, ok := labels[nodecontroller.Exclusion]; ok {
+			isFound = false
+			if id, ok := labels[scheduleGPUID]; ok {
+				GPUID, _ := strconv.Atoi(id)
+				if len(cardList[GPUID].ExclusionTag) == 0 {
+					cardList[GPUID].ExclusionTag = append(cardList[GPUID].ExclusionTag, value)
+				} else {
+					for _, tag := range cardList[GPUID].ExclusionTag {
+						if value != tag {
+							fmt.Println("Pod exclusion tag mismatch with node")
+						}
+					}
+				}
+			}
+		}
+
+		scv.Status.CardList = cardList
+
+		ops := []util.Ops{
+			{
+				Op:    "replace",
+				Path:  "/status",
+				Value: scv.Status,
+			},
+		}
+		err = r.Client.Patch(context.TODO(), scv, &util.Patch{PatchOps: ops})
+		if err != nil {
+			klog.Errorf("Scv: %v Patch Status Error: %v", scv.GetName(), err)
+		}
+	}
 }
 
-func (r *PodSimReconciler) addAffinityTags(ctx context.Context, pod *v1.Pod, nodeName string) {
+func (r *PodSimReconciler) cleanAffinityTags(labels map[string]string, ctx context.Context, pod *v1.Pod, nodeName string) {
+	fmt.Println("ready to clean affinity tags")
 	scv := &scv1.Scv{}
 	err := r.Client.Get(ctx, types.NamespacedName{Name: nodeName}, scv)
 	if err != nil {
@@ -299,130 +533,97 @@ func (r *PodSimReconciler) addAffinityTags(ctx context.Context, pod *v1.Pod, nod
 		return
 	}
 
-	podListWithNode := make([]v1.Pod, 0)
+	cardList := scv.Status.CardList
+
+	podListWithGPU := make([]v1.Pod, 0)
 	podList := &v1.PodList{}
 
-	err = r.Client.List(ctx, podList)
+	err = r.Client.List(ctx, podList, &client.MatchingLabels{
+		nodecontroller.ManageLabelKey: nodecontroller.ManageLabelValue,
+	})
 	if err != nil {
 		klog.Errorf("List Pod Error: %v", err)
 		return
 	}
 
 	for _, podItem := range podList.Items {
-		if podItem.Spec.NodeName == nodeName {
-			podListWithNode = append(podListWithNode, podItem)
-		}
-	}
-
-	cardList := scv.Status.CardList
-
-	if pod.GetLabels()[nodecontroller.Affinity] != "" {
-		for _, podItem := range podListWithNode {
-			if pod.GetLabels()[nodecontroller.Affinity] == podItem.GetLabels()[nodecontroller.Affinity] && pod.GetName() != podItem.GetName() {
-				return
+		if pod.Spec.NodeName == podItem.Spec.NodeName && pod.GetName() != podItem.GetName() {
+			existLabels := podItem.GetLabels()
+			if existLabels[scheduleGPUID] == labels[scheduleGPUID] {
+				podListWithGPU = append(podListWithGPU, podItem)
 			}
 		}
-		GPUID, _ := strconv.Atoi(pod.GetLabels()["scheduleGPUID"])
-		cardList[GPUID].AffinityTag = append(cardList[GPUID].AffinityTag, pod.GetLabels()[nodecontroller.Affinity])
 	}
 
-	if pod.GetLabels()[nodecontroller.AntiAffinity] != "" {
-		for _, podItem := range podListWithNode {
-			if pod.GetLabels()[nodecontroller.AntiAffinity] == podItem.GetLabels()[nodecontroller.AntiAffinity] && pod.GetName() != podItem.GetName() {
-				return
+	fmt.Println("get pod list success")
+
+	alreadyExist := false
+	if value, ok := labels[nodecontroller.Affinity]; ok {
+		fmt.Println("get pod affinity success")
+		for _, podItem := range podListWithGPU {
+			existLabels := podItem.GetLabels()
+			if v, ok := existLabels[nodecontroller.Affinity]; ok {
+				fmt.Println("get  existing pod affinity success")
+				if value == v && pod.GetName() != podItem.GetName() {
+					alreadyExist = true
+				}
 			}
 		}
-		GPUID, _ := strconv.Atoi(pod.GetLabels()["scheduleGPUID"])
-		cardList[GPUID].AntiAffinityTag = append(cardList[GPUID].AntiAffinityTag, pod.GetLabels()[nodecontroller.AntiAffinity])
-	}
-
-	if pod.GetLabels()[nodecontroller.Exclusion] != "" {
-		for _, podItem := range podListWithNode {
-			if pod.GetLabels()[nodecontroller.Exclusion] == podItem.GetLabels()[nodecontroller.Exclusion] && pod.GetName() != podItem.GetName() {
-				return
+		if !alreadyExist {
+			fmt.Println("start to delete affinity tag")
+			if gpuID, ok := labels[scheduleGPUID]; ok {
+				GPUID, err := strconv.Atoi(gpuID)
+				if err != nil {
+					fmt.Println("convert failed")
+				}
+				cardList[GPUID].AffinityTag = RemoveParam(cardList[GPUID].AffinityTag, value)
+				fmt.Println(cardList[GPUID].AffinityTag)
 			}
 		}
-		GPUID, _ := strconv.Atoi(pod.GetLabels()["scheduleGPUID"])
-		cardList[GPUID].ExclusionTag = append(cardList[GPUID].ExclusionTag, pod.GetLabels()[nodecontroller.Exclusion])
-	}
-}
-
-func (r *PodSimReconciler) cleanAffinityTags(ctx context.Context, pod *v1.Pod, nodeName string) {
-	scv := &scv1.Scv{}
-	err := r.Client.Get(ctx, types.NamespacedName{Name: nodeName}, scv)
-	if err != nil {
-		klog.Errorf("Node: %v Get Scv Error: %v", nodeName, err)
-		return
 	}
 
-	podListWithNode := make([]v1.Pod, 0)
-	podList := &v1.PodList{}
-
-	err = r.Client.List(ctx, podList)
-	if err != nil {
-		klog.Errorf("List Pod Error: %v", err)
-		return
-	}
-
-	for _, podItem := range podList.Items {
-		if podItem.Spec.NodeName == nodeName {
-			podListWithNode = append(podListWithNode, podItem)
-		}
-	}
-
-	cardList := scv.Status.CardList
-
-	if pod.GetLabels()[nodecontroller.Affinity] != "" {
-		for _, podItem := range podListWithNode {
-			if pod.GetLabels()[nodecontroller.Affinity] == podItem.GetLabels()[nodecontroller.Affinity] && pod.GetName() != podItem.GetName() {
-				return
+	if value, ok := labels[nodecontroller.AntiAffinity]; ok {
+		alreadyExist = false
+		for _, podItem := range podListWithGPU {
+			existLabels := podItem.GetLabels()
+			if v, ok := existLabels[nodecontroller.AntiAffinity]; ok {
+				if value == v && pod.GetName() != podItem.GetName() {
+					alreadyExist = true
+				}
 			}
 		}
-		GPUID, _ := strconv.Atoi(pod.GetLabels()["scheduleGPUID"])
-		RemoveParam(cardList[GPUID].AffinityTag, pod.GetLabels()[nodecontroller.Affinity])
-	}
-
-	if pod.GetLabels()[nodecontroller.AntiAffinity] != "" {
-		for _, podItem := range podListWithNode {
-			if pod.GetLabels()[nodecontroller.AntiAffinity] == podItem.GetLabels()[nodecontroller.AntiAffinity] && pod.GetName() != podItem.GetName() {
-				return
+		if !alreadyExist {
+			if gpuID, ok := labels[scheduleGPUID]; ok {
+				GPUID, err := strconv.Atoi(gpuID)
+				if err != nil {
+					fmt.Println("convert failed")
+				}
+				cardList[GPUID].AntiAffinityTag = RemoveParam(cardList[GPUID].AntiAffinityTag, value)
 			}
 		}
-		GPUID, _ := strconv.Atoi(pod.GetLabels()["scheduleGPUID"])
-		RemoveParam(cardList[GPUID].AntiAffinityTag, pod.GetLabels()[nodecontroller.AntiAffinity])
 	}
 
-	if pod.GetLabels()[nodecontroller.Exclusion] != "" {
-		for _, podItem := range podListWithNode {
-			if pod.GetLabels()[nodecontroller.Exclusion] == podItem.GetLabels()[nodecontroller.Exclusion] && pod.GetName() != podItem.GetName() {
-				return
+	if value, ok := labels[nodecontroller.Exclusion]; ok {
+		alreadyExist = false
+		for _, podItem := range podListWithGPU {
+			existLabels := podItem.GetLabels()
+			if v, ok := existLabels[nodecontroller.Exclusion]; ok {
+				if value == v && pod.GetName() != podItem.GetName() {
+					alreadyExist = true
+				}
 			}
 		}
-		GPUID, _ := strconv.Atoi(pod.GetLabels()["scheduleGPUID"])
-		RemoveParam(cardList[GPUID].ExclusionTag, pod.GetLabels()[nodecontroller.Exclusion])
-	}
-}
-
-func (r *PodSimReconciler) releaseResource(ctx context.Context, pod *v1.Pod, nodeName string) {
-	scv := &scv1.Scv{}
-	err := r.Client.Get(ctx, types.NamespacedName{Name: nodeName}, scv)
-	if err != nil {
-		klog.Errorf("Node: %v Get Scv Error: %v", nodeName, err)
-		return
+		if !alreadyExist {
+			if gpuID, ok := labels[scheduleGPUID]; ok {
+				GPUID, err := strconv.Atoi(gpuID)
+				if err != nil {
+					fmt.Println("convert failed")
+				}
+				cardList[GPUID].ExclusionTag = RemoveParam(cardList[GPUID].ExclusionTag, value)
+			}
+		}
 	}
 
-	cardList := scv.Status.CardList
-
-	GPUID, _ := strconv.Atoi(pod.GetLabels()["scheduleGPUID"])
-	mem := StrToUint64(pod.GetLabels()["scv/memory"])
-	cardList[GPUID].FreeMemory += mem
-
-	freeSum := uint64(0)
-	for _, card := range cardList {
-		freeSum += card.FreeMemory
-	}
-
-	scv.Status.FreeMemorySum = freeSum
 	scv.Status.CardList = cardList
 
 	ops := []util.Ops{
@@ -437,7 +638,6 @@ func (r *PodSimReconciler) releaseResource(ctx context.Context, pod *v1.Pod, nod
 	if err != nil {
 		klog.Errorf("Scv: %v Patch Status Error: %v", scv.GetName(), err)
 	}
-
 }
 
 func RemoveParam(sli []string, n string) []string {
@@ -462,4 +662,20 @@ func StrToUint64(str string) uint64 {
 	} else {
 		return uint64(i)
 	}
+}
+
+func RemoveCard(sli []scv1.Card, n scv1.Card) []scv1.Card {
+	for i := 0; i < len(sli); i++ {
+		if sli[i].ID == n.ID {
+			if i == 0 {
+				sli = sli[1:]
+			} else if i == len(sli)-1 {
+				sli = sli[:i]
+			} else {
+				sli = append(sli[:i], sli[i+1:]...)
+			}
+			i--
+		}
+	}
+	return sli
 }

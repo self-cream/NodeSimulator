@@ -236,20 +236,19 @@ func (r *NodeSimReconciler) SyncFakeNode(ctx context.Context, nodeSim *simv1.Nod
 		memSum := uint64(0)
 
 		for i := 0; i < nodeSim.Spec.GPU.Number; i++ {
-				card := scv1.Card{
-					ID:          uint(i),
-					Health:      "Healthy",
-					Model:       nodeSim.Spec.GpuModel,
-					Power:       250,
-					TotalMemory: strToUint64(nodeSim.Spec.GPU.Memory),
-					Clock:       6000,
-					FreeMemory:  strToUint64(nodeSim.Spec.GPU.Memory),
-					Core:        strToUint(nodeSim.Spec.GPU.Core),
-					Bandwidth:   strToUint(nodeSim.Spec.GPU.Bandwidth),
-					CoreNumber:  uint(nodeSim.Spec.GPU.CoreNumber),
-
-				}
-				cardList = append(cardList, card)
+			card := scv1.Card{
+				ID:          uint(i),
+				Health:      "Healthy",
+				Model:       nodeSim.Spec.GpuModel,
+				Power:       250,
+				TotalMemory: strToUint64(nodeSim.Spec.GPU.Memory),
+				Clock:       6000,
+				FreeMemory:  strToUint64(nodeSim.Spec.GPU.Memory),
+				Core:        strToUint(nodeSim.Spec.GPU.Core),
+				Bandwidth:   strToUint(nodeSim.Spec.GPU.Bandwidth),
+				CoreNumber:  uint(nodeSim.Spec.GPU.CoreNumber),
+			}
+			cardList = append(cardList, card)
 
 			memSum += strToUint64(nodeSim.Spec.GPU.Memory)
 		}

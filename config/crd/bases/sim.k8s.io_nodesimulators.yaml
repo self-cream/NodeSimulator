@@ -46,11 +46,15 @@ spec:
                   type: string
                 core:
                   type: string
+                coreNumber:
+                  type: integer
                 memory:
                   type: string
                 number:
                   type: integer
               type: object
+            gpuModel:
+              type: string
             memory:
               type: string
             number:

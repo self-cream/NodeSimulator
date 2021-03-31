@@ -9,13 +9,13 @@ import (
 	"strconv"
 )
 
-func SelectGPUModel(nodesim *simv1.NodeSimulator) (*simv1.NodeSimulator) {
+func SelectGPUModel(nodesim *simv1.NodeSimulator) *simv1.NodeSimulator {
 	if nodesim.Spec.GpuModel == "GTX-1660" {
 		nodesim.Spec.GPU.Memory = strconv.Itoa(6000)
 		nodesim.Spec.GPU.Core = strconv.Itoa(1785)
 		nodesim.Spec.GPU.Bandwidth = strconv.Itoa(188)
 		nodesim.Spec.GPU.CoreNumber = 1408
-		}
+	}
 
 	if nodesim.Spec.GpuModel == "TITAN-Xp" {
 		nodesim.Spec.GPU.Memory = strconv.Itoa(12288)
@@ -27,8 +27,8 @@ func SelectGPUModel(nodesim *simv1.NodeSimulator) (*simv1.NodeSimulator) {
 	if nodesim.Spec.GpuModel == "Tesla P100" {
 		nodesim.Spec.GPU.Memory = strconv.Itoa(16384)
 		nodesim.Spec.GPU.Core = strconv.Itoa(1328)
-		nodesim.Spec.GPU.Bandwidth = strconv.Itoa(188)
-		nodesim.Spec.GPU.CoreNumber = 1408
+		nodesim.Spec.GPU.Bandwidth = strconv.Itoa(720)
+		nodesim.Spec.GPU.CoreNumber = 3584
 	}
 
 	return nodesim
@@ -126,7 +126,8 @@ func GenNode(nodesim *simv1.NodeSimulator) (*v1.Node, error) {
 			node.Status.Allocatable["gpu/bandwidth"] = bandwidth
 			node.Status.Capacity["gpu/bandwidth"] = bandwidth
 
-			memory, err := resource.ParseQuantity(nodesim.Spec.GPU.Memory)
+			mem, _ := strconv.Atoi(nodesim.Spec.GPU.Memory)
+			memory, err := resource.ParseQuantity(strconv.Itoa(mem * nodesim.Spec.GPU.Number))
 			if err != nil {
 				klog.Errorf("NodeSim: %v/%v GPU Memory ParseQuantity Error: %v", nodesim.GetNamespace(), nodesim.GetName(), err)
 				return nil, err
@@ -152,8 +153,6 @@ func GenNode(nodesim *simv1.NodeSimulator) (*v1.Node, error) {
 
 		}
 	}
-
-
 
 	return node, nil
 }

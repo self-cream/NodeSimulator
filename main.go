@@ -49,7 +49,7 @@ func init() {
 func main() {
 	var metricsAddr string
 	var enableLeaderElection bool
-	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
+	flag.StringVar(&metricsAddr, "metrics-addr", ":8081", "The address the metric endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
 		"Enable leader election for controller manager. Enabling this will ensure there is only one active controller manager.")
 	flag.Parse()
@@ -106,6 +106,16 @@ func main() {
 
 	if err == nil {
 		go nodeUpdater.Run(5, stopChan)
+	} else {
+		klog.Errorf("New NodeUpdate Error: %v", err)
+	}
+
+	resourceUtilizationUpdater, err := node.NewResourceUtilizationUpdater(mgr.GetClient(),
+		workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		stopChan)
+
+	if err == nil {
+		go resourceUtilizationUpdater.Run(5, stopChan)
 	} else {
 		klog.Errorf("New NodeUpdate Error: %v", err)
 	}
