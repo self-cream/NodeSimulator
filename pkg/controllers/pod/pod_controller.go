@@ -93,16 +93,16 @@ func (r *PodSimReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			for _, pod := range podListWithNode {
 				labels := pod.GetLabels()
 				mem := StrToUint64(labels["scv/memory"])
-				minSub := ^uint64(0)
+				//minSub := ^uint64(0)
 				GPUID := 0
 
-				for index, card := range cardList {
-					sub := card.FreeMemory - mem
-					if sub >= 0 && sub < minSub {
-						minSub = sub
-						GPUID = index
-					}
-				}
+				//for index, card := range cardList {
+				//	sub := card.FreeMemory - mem
+				//	if sub >= 0 && sub < minSub {
+				//		minSub = sub
+				//		GPUID = index
+				//	}
+				//}
 				if gpuID, ok := labels[scheduleGPUID]; ok {
 					GPUID, err = strconv.Atoi(gpuID)
 					if err != nil {
